@@ -1,0 +1,67 @@
+plugins {
+    id 'org.mikeneck.graalvm-native-image' version 'v0.5.0'
+    id 'java'
+}
+
+apply plugin: "org.mikeneck.graalvm-native-image"
+
+repositories {
+  mavenCentral()
+}
+
+group 'com.galiglobal.jreview'
+version '1.0-SNAPSHOT'
+
+sourceCompatibility = 1.8
+targetCompatibility = 1.8
+
+repositories {
+    jcenter()
+    mavenCentral()
+    mavenLocal()
+}
+
+dependencies {
+    compile 'info.picocli:picocli:4.3.0'
+    compile 'info.picocli:picocli-jansi-graalvm:1.1.0'
+    compile 'org.fusesource.jansi:jansi:1.18'
+    compile 'com.google.code.gson:gson:2.8.6'
+
+
+    annotationProcessor 'info.picocli:picocli-codegen:4.2.0'
+
+    testImplementation("org.junit.jupiter:junit-jupiter-api:5.5.2")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.5.2")
+}
+
+compileJava {
+    options.compilerArgs += [
+            "-Aproject=${project.group}/${project.name}",
+            "-Aother.resource.patterns=testkey.jks"
+    ]
+}
+
+test {
+    useJUnitPlatform()
+}
+
+//if (!System.getProperty("os.name").toLowerCase().startsWith("win")) {
+    //test.dependsOn(tasks.getByName('nativeImage'))
+//}
+
+// config for org.mikeneck.graalvm-native-image
+nativeImage {
+    graalVmHome = System.getProperty('java.home')
+    mainClass = 'com.galiglobal.jreview.JReview'
+    executableName = 'jreview'
+    arguments(
+            '--no-server',
+            '--no-fallback',
+            '--enable-all-security-services',
+            '-H:EnableURLProtocols=http,https',
+            '--report-unsupported-elements-at-runtime'
+    )
+}
+// work around https://github.com/mike-neck/graalvm-native-image-plugin/issues/12
+tasks.nativeImage.outputs.upToDateWhen { false }
+
