@@ -1,6 +1,8 @@
 package com.galiglobal.jreview;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
@@ -52,14 +54,25 @@ public class ListCommand implements Callable<Integer> {
         request.setRequestProperty("Authorization", basicAuth);
         request.connect();
 
-        // TODO: format the output of the repository
         try (InputStream in = (InputStream) request.getContent();
              BufferedReader br = new BufferedReader(new InputStreamReader(in))) {
-            JsonElement jsonObject = JsonParser.parseReader(br);
-            out.println(jsonObject.toString());
+            JsonElement jsonTree = JsonParser.parseReader(br);
+            if (jsonTree.isJsonObject()) {
+                JsonObject jsonObject = jsonTree.getAsJsonObject();
+                JsonArray value = jsonObject.getAsJsonArray("value");
+                value.forEach(v -> out.println(formatOutput(v)));
+            }
         }
-
         return 0;
+    }
+
+    private String formatOutput(JsonElement v) {
+        return ("#" + v.getAsJsonObject().getAsJsonPrimitive("pullRequestId") +
+                " " + v.getAsJsonObject().getAsJsonPrimitive("title") +
+                " " + v.getAsJsonObject().getAsJsonPrimitive("status")
+                .toString().replace("\"", "") +
+                " " + v.getAsJsonObject().getAsJsonObject("createdBy")
+                .getAsJsonPrimitive("displayName"));
     }
 
     private String buildUrlFromGitConfig() throws Exception {
