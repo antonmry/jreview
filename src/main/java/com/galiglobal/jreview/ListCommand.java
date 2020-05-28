@@ -5,17 +5,15 @@ import com.google.gson.JsonParser;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Model.CommandSpec;
-import picocli.CommandLine.Parameters;
 import picocli.CommandLine.Spec;
 import picocli.jansi.graalvm.AnsiConsole;
 
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
+import java.io.*;
 import java.net.URL;
 import java.net.URLConnection;
 import java.util.concurrent.Callable;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Command(name = "list", mixinStandardHelpOptions = true,
         description = "List Pull Requests available for the repository where jreview is executed")
@@ -33,10 +31,6 @@ public class ListCommand implements Callable<Integer> {
             description = "Git service password/token")
     String password;
 
-    private static final String DEFAULT_URL = "https://dev.azure.com/antonmry/antonmry/_apis/git/repositories/antonmry/pullrequests?api-version=5.1";
-
-    @Parameters(description = "The URL to download", defaultValue = DEFAULT_URL)
-    String sUrl;
     @Spec
     CommandSpec spec;
 
@@ -51,22 +45,48 @@ public class ListCommand implements Callable<Integer> {
     public Integer call() throws Exception {
         PrintWriter out = spec.commandLine().getOut();
 
-        URL url = new URL(sUrl);
+        URL url = new URL(buildUrlFromGitConfig());
         URLConnection request = url.openConnection();
         String userpass = username + ":" + password;
         String basicAuth = "Basic " + javax.xml.bind.DatatypeConverter.printBase64Binary(userpass.getBytes());
         request.setRequestProperty("Authorization", basicAuth);
         request.connect();
 
-        out.println("****** Content of the URL ********");
-
+        // TODO: format the output of the repository
         try (InputStream in = (InputStream) request.getContent();
              BufferedReader br = new BufferedReader(new InputStreamReader(in))) {
             JsonElement jsonObject = JsonParser.parseReader(br);
             out.println(jsonObject.toString());
-
         }
+
         return 0;
+    }
+
+    private String buildUrlFromGitConfig() throws Exception {
+        // TODO: we should search the file recursively
+        try (BufferedReader br = new BufferedReader(new FileReader(".git/config"))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                // TODO: remote should be a parameter
+                if (line.equals("[remote \"origin\"]")) {
+                    break;
+                }
+            }
+            line = br.readLine();
+            // TODO: this should work also for SSH
+            Matcher m = Pattern.compile(".*dev.azure.com/(.*)/(.*)/_git/(.*)").matcher(line);
+            if (m.find()) {
+                String organization = m.group(1);
+                String project = m.group(2);
+                String repository = m.group(3);
+                return "https://dev.azure.com/" + organization + "/" + project + "/_apis/git/repositories/" +
+                        repository + "/pullrequests?api-version=5.1";
+            } else {
+                throw new Exception("Remote URL not supported");
+            }
+        } catch (Exception e) {
+            throw new Exception("Run this command in the root folder of a git project");
+        }
     }
 }
 
