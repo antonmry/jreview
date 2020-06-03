@@ -11,7 +11,6 @@ import picocli.CommandLine.Spec;
 import picocli.jansi.graalvm.AnsiConsole;
 
 import java.io.*;
-import java.net.URL;
 import java.net.URLConnection;
 import java.util.concurrent.Callable;
 import java.util.regex.Matcher;
@@ -20,6 +19,8 @@ import java.util.regex.Pattern;
 @Command(name = "list", mixinStandardHelpOptions = true,
         description = "List Pull Requests available for the repository where jreview is executed")
 public class ListCommand implements Callable<Integer> {
+
+    private final ConnectionManager connectionManager = new ConnectionManager();
 
     @CommandLine.Option(
             names = {"-u", "--username"},
@@ -44,15 +45,11 @@ public class ListCommand implements Callable<Integer> {
         System.exit(exitCode);
     }
 
+    @Override
     public Integer call() throws Exception {
         PrintWriter out = spec.commandLine().getOut();
 
-        URL url = new URL(buildUrlFromGitConfig());
-        URLConnection request = url.openConnection();
-        String userpass = username + ":" + password;
-        String basicAuth = "Basic " + javax.xml.bind.DatatypeConverter.printBase64Binary(userpass.getBytes());
-        request.setRequestProperty("Authorization", basicAuth);
-        request.connect();
+        URLConnection request = connectionManager.openConnection(username, password);
 
         try (InputStream in = (InputStream) request.getContent();
              BufferedReader br = new BufferedReader(new InputStreamReader(in))) {
@@ -68,38 +65,15 @@ public class ListCommand implements Callable<Integer> {
 
     private String formatOutput(JsonElement v) {
         return ("#" + v.getAsJsonObject().getAsJsonPrimitive("pullRequestId") +
-                " " + v.getAsJsonObject().getAsJsonPrimitive("title") +
-                " " + v.getAsJsonObject().getAsJsonPrimitive("status")
+                "\t" + deleteQuotes(v.getAsJsonObject().getAsJsonPrimitive("title").toString()) +
+                "\t" + v.getAsJsonObject().getAsJsonPrimitive("status")
                 .toString().replace("\"", "") +
-                " " + v.getAsJsonObject().getAsJsonObject("createdBy")
-                .getAsJsonPrimitive("displayName"));
+                "\t" + deleteQuotes(v.getAsJsonObject().getAsJsonObject("createdBy")
+                .getAsJsonPrimitive("displayName").toString()));
     }
 
-    private String buildUrlFromGitConfig() throws Exception {
-        // TODO: we should search the file recursively
-        try (BufferedReader br = new BufferedReader(new FileReader(".git/config"))) {
-            String line;
-            while ((line = br.readLine()) != null) {
-                // TODO: remote should be a parameter
-                if (line.equals("[remote \"origin\"]")) {
-                    break;
-                }
-            }
-            line = br.readLine();
-            // TODO: this should work also for SSH
-            Matcher m = Pattern.compile(".*dev.azure.com/(.*)/(.*)/_git/(.*)").matcher(line);
-            if (m.find()) {
-                String organization = m.group(1);
-                String project = m.group(2);
-                String repository = m.group(3);
-                return "https://dev.azure.com/" + organization + "/" + project + "/_apis/git/repositories/" +
-                        repository + "/pullrequests?api-version=5.1";
-            } else {
-                throw new Exception("Remote URL not supported");
-            }
-        } catch (Exception e) {
-            throw new Exception("Run this command in the root folder of a git project");
-        }
+    private String deleteQuotes(String sentence) {
+        return sentence.substring(1, sentence.length() - 1);
     }
 }
 

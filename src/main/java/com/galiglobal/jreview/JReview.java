@@ -11,6 +11,7 @@ import java.util.concurrent.Callable;
         version = "jreview 4.0",
         subcommands = {
                 ListCommand.class,
+                CheckoutCommand.class,
                 HelpCommand.class},
         description = "Manage Pull Requests from the command-line")
 public class JReview implements Callable<Integer> {
