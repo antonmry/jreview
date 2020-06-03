@@ -10,16 +10,18 @@ import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Spec;
 import picocli.jansi.graalvm.AnsiConsole;
 
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
 import java.net.URLConnection;
 import java.util.concurrent.Callable;
-import java.util.concurrent.Executors;
-import java.util.function.Consumer;
 
 @Command(name = "checkout", mixinStandardHelpOptions = true,
         description = "Change to the git brach for the specified Pull Request")
 public class CheckoutCommand implements Callable<Integer> {
 
+    private final CommandExecutor commandExecutor = new CommandExecutor();
     @CommandLine.Option(
             names = {"-u", "--username"},
             required = true,
@@ -27,13 +29,19 @@ public class CheckoutCommand implements Callable<Integer> {
     String username;
 
     @CommandLine.Option(
-            names = {"-p", "--password"},
+            names = {"-t", "--token"},
             required = true,
             description = "Git service password/token")
-    String password;
+    String token;
 
     @CommandLine.Option(
-            names = {"-r", "--request"},
+            names = {"-r", "--remote"},
+            defaultValue = "origin",
+            description = "Git remote with the Pull Request")
+    String remote;
+
+    @CommandLine.Option(
+            names = {"-p", "--pullrequest"},
             required = true,
             description = "Pull Request ID")
     String pullRequest;
@@ -42,23 +50,6 @@ public class CheckoutCommand implements Callable<Integer> {
     CommandSpec spec;
 
     private final ConnectionManager connectionManager = new ConnectionManager();
-
-    private static final boolean IS_WINDOWS = System.getProperty("os.name").toLowerCase().startsWith("windows");
-
-    private static class StreamGobbler implements Runnable {
-        private InputStream inputStream;
-        private Consumer<String> consumer;
-
-        public StreamGobbler(InputStream inputStream, Consumer<String> consumer) {
-            this.inputStream = inputStream;
-            this.consumer = consumer;
-        }
-
-        @Override
-        public void run() {
-            new BufferedReader(new InputStreamReader(inputStream)).lines().forEach(consumer);
-        }
-    }
 
     public static void main(String[] args) {
         int exitCode;
@@ -72,7 +63,7 @@ public class CheckoutCommand implements Callable<Integer> {
     public Integer call() throws Exception {
         PrintWriter out = spec.commandLine().getOut();
 
-        URLConnection request = connectionManager.openConnection(username, password);
+        URLConnection request = connectionManager.openConnection(username, token, remote);
 
         try (InputStream in = (InputStream) request.getContent();
              BufferedReader br = new BufferedReader(new InputStreamReader(in))) {
@@ -92,44 +83,12 @@ public class CheckoutCommand implements Callable<Integer> {
                 if (branch.isEmpty()) {
                     out.println("Pull Request not found");
                     return 1;
-                } else {
-                    ProcessBuilder builder = new ProcessBuilder();
-                    if (IS_WINDOWS) {
-                        builder.command("cmd.exe", "/c", "git.exe checkout " + branch);
-                    } else {
-                        builder.command("sh", "-c", "git checkout " + branch);
-                    }
-
-                    // TODO: we should refactor, extract method
-                    try {
-
-                        Process process = builder.start();
-
-                        // Block is fine, user is waiting
-                        BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-                        BufferedReader errorReader = new BufferedReader(new InputStreamReader(process.getErrorStream()));
-
-                        String line;
-                        while ((line = reader.readLine()) != null) {
-                            out.println(line);
-                        }
-                        while ((line = errorReader.readLine()) != null) {
-                            out.println(line);
-                        }
-                        return process.waitFor();
-
-                    } catch (IOException e) {
-                        out.println("Checkout failed");
-                        return 1;
-                    } catch (InterruptedException e) {
-                        out.println("Checkout has been cancelled");
-                        return 1;
-                    }
                 }
+
+                return commandExecutor.execute(out, "checkout " + branch);
             }
         }
         return 1;
     }
-
 }
 

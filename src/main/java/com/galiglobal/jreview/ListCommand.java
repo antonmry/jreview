@@ -13,8 +13,6 @@ import picocli.jansi.graalvm.AnsiConsole;
 import java.io.*;
 import java.net.URLConnection;
 import java.util.concurrent.Callable;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 @Command(name = "list", mixinStandardHelpOptions = true,
         description = "List Pull Requests available for the repository where jreview is executed")
@@ -29,10 +27,16 @@ public class ListCommand implements Callable<Integer> {
     String username;
 
     @CommandLine.Option(
-            names = {"-p", "--password"},
+            names = {"-t", "--token"},
             required = true,
             description = "Git service password/token")
-    String password;
+    String token;
+
+    @CommandLine.Option(
+            names = {"-r", "--remote"},
+            defaultValue = "origin",
+            description = "Git remote with the Pull Request")
+    String remote;
 
     @Spec
     CommandSpec spec;
@@ -49,7 +53,7 @@ public class ListCommand implements Callable<Integer> {
     public Integer call() throws Exception {
         PrintWriter out = spec.commandLine().getOut();
 
-        URLConnection request = connectionManager.openConnection(username, password);
+        URLConnection request = connectionManager.openConnection(username, token, remote);
 
         try (InputStream in = (InputStream) request.getContent();
              BufferedReader br = new BufferedReader(new InputStreamReader(in))) {
